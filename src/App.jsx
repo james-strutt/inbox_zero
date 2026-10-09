@@ -57,13 +57,13 @@ export default function App() {
         <article className="mail">
           <div className="mail-bar"><i className="dot r"></i><i className="dot y"></i><i className="dot g"></i><span>Inbox (4,812 unread)</span></div>
           <dl className="headers">
-            <dt>From</dt><dd>Scott Jordan; literally everyone else</dd>
+            <dt>From</dt><dd>The Boss; literally everyone else</dd>
             <dt>To</dt><dd>You; All-Staff; All-Staff (2)</dd>
             <dt>Subject</dt><dd className="flag">RE: RE: FW: Quick question (URGENT!!)</dd>
           </dl>
           <div className="mail-body">
             <h1>Inbox <em>Zero</em></h1>
-            <p className="lede">It's 9:00 on a Wednesday. Roll your chair around the floor and dodge every email, meeting invite and "quick question" until 5:00 PM. Get hit too often and your stress maxes out. Anything from Scott Jordan is aimed at you.</p>
+            <p className="lede">It's 9:00 on a Wednesday. Roll your chair around the floor and dodge every email, meeting invite and "quick question" until 5:00 PM. Get hit too often and your stress maxes out. Anything from The Boss is aimed at you.</p>
             <div className="legend" id="legend"></div>
             <p className="keys desk-only"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows to roll &nbsp;·&nbsp; <kbd>Space</kbd> chair-spin dash (brief immunity) &nbsp;·&nbsp; <kbd>P</kbd> pause</p>
             <p className="keys touch-only" id="touchKeys" hidden>Drag anywhere to roll. Tap SPIN to dash through trouble.</p>
@@ -102,7 +102,7 @@ export default function App() {
               <div className="stat hl"><span className="label">Score</span><b id="sScore">0</b></div>
               <div className="stat"><span className="label">Dodged</span><b id="sDodged">0</b></div>
               <div className="stat"><span className="label">Close calls</span><b id="sClose">0</b></div>
-              <div className="stat"><span className="label">Scott Jordan dodged</span><b id="sScott">0</b></div>
+              <div className="stat"><span className="label">Boss dodged</span><b id="sBoss">0</b></div>
               <div className="stat"><span className="label">Hits taken</span><b id="sHits">0</b></div>
               <div className="stat"><span className="label">Best</span><b id="sBest">0</b></div>
             </div>

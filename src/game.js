@@ -707,10 +707,10 @@ function inputVec(out) {
 
 /* ---------- game state ---------- */
 const DAY = 150; // seconds from 9:00 to 17:00
-const game = { state: 'loading', t: 0, stress: 0, score: 0, combo: 1, comboN: 0, dodged: 0, hits: 0, close: 0, scott: 0, shoutT: 9, spawnT: 1.5, powerT: 9, overtime: false,
+const game = { state: 'loading', t: 0, stress: 0, score: 0, combo: 1, comboN: 0, dodged: 0, hits: 0, close: 0, boss: 0, shoutT: 9, spawnT: 1.5, powerT: 9, overtime: false,
   lastHitT: -10, events: [], projectiles: [], powerups: [], calls: [], replyCd: 0, best: store.get('iz-best', 0), titleT: 0, slowmo: 1, won: false, nextBeat: 0 };
 
-const QUOTES = ['Jason!', 'I would welcome your thoughts!', 'Scott Jordan: Got 5 mins?', 'Per my last email…', 'Just circling back!', 'Quick question?', 'Can we jump on a call?', 'Let’s take this offline', 'Any update on this?', 'Adding a few people', 'Gentle reminder', 'Can you action this?', 'Looping in your manager', 'Did you see my Teams msg?', 'Moving this to Friday 4:45', 'Sorry, wrong thread', 'Reply All: Thanks!', 'Need this by EOD', 'Who owns this?'];
+const QUOTES = ['Jason!', 'I would welcome your thoughts!', 'The Boss: Got 5 mins?', 'Per my last email…', 'Just circling back!', 'Quick question?', 'Can we jump on a call?', 'Let’s take this offline', 'Any update on this?', 'Adding a few people', 'Gentle reminder', 'Can you action this?', 'Looping in your manager', 'Did you see my Teams msg?', 'Moving this to Friday 4:45', 'Sorry, wrong thread', 'Reply All: Thanks!', 'Need this by EOD', 'Who owns this?'];
 
 const SCHEDULE = [
   { t: 2, title: '9:00 AM. Inbox opens.', sub: 'Dodge the emails' },
@@ -774,16 +774,16 @@ function edgePoint(margin = 3) {
 }
 
 const TAGS = {
-  scott: { cls: 'from', html: '<i>SJ</i>Scott Jordan' },
+  boss: { cls: 'from', html: '<i>B</i>The Boss' },
   jason: { cls: 'shout', html: 'Jason!' },
   thoughts: { cls: 'thoughts', html: 'I would welcome your thoughts!' },
 };
 function chooseTag(type) {
   const r = Math.random();
-  if (type === 'email') return r < .22 ? 'scott' : r < .38 ? 'thoughts' : null;
-  if (type === 'urgent') return r < .45 ? 'scott' : null;
+  if (type === 'email') return r < .22 ? 'boss' : r < .38 ? 'thoughts' : null;
+  if (type === 'urgent') return r < .45 ? 'boss' : null;
   if (type === 'sticky') return r < .4 ? 'jason' : null;
-  if (type === 'invite') return r < .35 ? 'scott' : r < .6 ? 'thoughts' : null;
+  if (type === 'invite') return r < .35 ? 'boss' : r < .6 ? 'thoughts' : null;
   return null;
 }
 function attachTag(p, kind) {
@@ -801,7 +801,7 @@ function placeTag(p) {
   p.tag.style.opacity = Math.min(1, p.age * 5);
 }
 function hitQuote(kind) {
-  if (kind === 'scott') return pick(['Scott Jordan: Got 5 mins?', 'Scott Jordan: Per my last email…', 'Scott Jordan: Just looping back on this']);
+  if (kind === 'boss') return pick(['The Boss: Got 5 mins?', 'The Boss: Per my last email…', 'The Boss: Just looping back on this']);
   if (kind === 'jason') return 'Jason!';
   if (kind === 'thoughts') return 'I would welcome your thoughts!';
 }
@@ -863,7 +863,7 @@ function spawnReplyAll(spMul) {
   const entry = from.clone().addScaledVector(toward, 3.2); entry.y = .04;
   warn.position.copy(entry);
   scene.add(warn);
-  floatText(new THREE.Vector3(entry.x, 1.6, entry.z), Math.random() < .4 ? 'Scott Jordan replied all' : 'REPLY ALL', 'bad', 1.2, .6);
+  floatText(new THREE.Vector3(entry.x, 1.6, entry.z), Math.random() < .4 ? 'The Boss replied all' : 'REPLY ALL', 'bad', 1.2, .6);
   Sfx.urgent();
   game.events.push({ t: .9, cleanup() { scene.remove(warn); }, tick(dt, e) { e.age = (e.age || 0) + dt; warn.material.opacity = .25 + .25 * Math.sin(e.age * 30); }, done() {
     scene.remove(warn); warn.geometry.dispose(); warn.material.dispose();
@@ -888,9 +888,9 @@ function spawnCall() {
   const fillDisc = new THREE.Mesh(new THREE.CircleGeometry(1, 48), fillM); fillDisc.rotation.x = -Math.PI / 2; fillDisc.position.y = .01; g.add(fillDisc);
   const icon = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.4), new THREE.MeshBasicMaterial({ map: phoneDecalTex, color: new THREE.Color(2, .6, .6), transparent: true, depthWrite: false }));
   icon.rotation.x = -Math.PI / 2; icon.position.y = .02; g.add(icon);
-  const call = { g, R, t: 0, dur: 1.55, pos, scott: Math.random() < .45 };
+  const call = { g, R, t: 0, dur: 1.55, pos, boss: Math.random() < .45 };
   game.calls.push(call);
-  floatText(new THREE.Vector3(pos.x, 1.2, pos.z), call.scott ? 'Scott Jordan calling…' : 'INCOMING CALL', 'bad', 1.4, .5);
+  floatText(new THREE.Vector3(pos.x, 1.2, pos.z), call.boss ? 'The Boss is calling…' : 'INCOMING CALL', 'bad', 1.4, .5);
   Sfx.ring();
   call.ringTimer = .5;
   call.fill = fillDisc;
@@ -910,10 +910,10 @@ function updateCalls(dt) {
       shockwave(c.pos, c.R, 0xff5b61);
       for (let j = 0; j < 40; j++) { const a = j / 40 * Math.PI * 2; glow.spawn(V2.set(c.pos.x + Math.cos(a) * c.R * .3, .3, c.pos.z + Math.sin(a) * c.R * .3), V.set(Math.cos(a) * 9, rand(1, 4), Math.sin(a) * 9), C.red, .5, 0, .6, 6, 3); }
       if (d < c.R + .3) {
-        if (hero.shield > 0) { blockFx(hero.pos); if (c.scott) game.scott++; }
-        else if (hero.invuln <= 0) takeHit(25, c.scott ? 'Scott Jordan: Jason! You there?' : 'Can you hear me? You’re on mute.');
-        else if (c.scott) game.scott++;
-      } else { if (c.scott) game.scott++; if (d < c.R + 1.6) closeCall(); else addDodge(); }
+        if (hero.shield > 0) { blockFx(hero.pos); if (c.boss) game.boss++; }
+        else if (hero.invuln <= 0) takeHit(25, c.boss ? 'The Boss: Jason! You there?' : 'Can you hear me? You’re on mute.');
+        else if (c.boss) game.boss++;
+      } else { if (c.boss) game.boss++; if (d < c.R + 1.6) closeCall(); else addDodge(); }
       scene.remove(c.g); c.g.traverse(o => { if (o.material && o.material !== M.sky) o.material.dispose(); });
       game.calls.splice(i, 1);
     }
@@ -1135,7 +1135,7 @@ function updateProjectiles(dt) {
     const d = Math.hypot(p.pos.x - hx, p.pos.z - hz);
     p.minD = Math.min(p.minD, d);
     if (hero.shield > 0 && d < 2.0 + p.def.r * .5) {
-      if (p.tagKind === 'scott') game.scott++;
+      if (p.tagKind === 'boss') game.boss++;
       blockFx(p.pos); destroyProjectile(p, true); game.projectiles.splice(i, 1); addDodge(); continue;
     }
     if (d < p.def.r + .62 && hero.invuln <= 0) {
@@ -1146,7 +1146,7 @@ function updateProjectiles(dt) {
     if (out || p.age > p.life) {
       if (p.age > p.life) { burst(p.pos, p.def.trail, 16, 4, .4, .5); paperBurst(p.pos, 4); }
       (scene.remove(p.mesh), dropTag(p)); game.projectiles.splice(i, 1);
-      if (p.tagKind === 'scott') game.scott++;
+      if (p.tagKind === 'boss') game.boss++;
       if (p.minD < p.def.r + 1.45 && p.minD > p.def.r + .62 - .05) closeCall(new THREE.Vector3(hx, 3.4, hz));
       else addDodge();
     }
@@ -1286,7 +1286,7 @@ function startGame(overtime = false) {
   if (W !== arena.W || D !== arena.D) { buildOffice(W, D); frameCamera(); }
   if (!overtime) {
     resetWorld();
-    Object.assign(game, { t: 0, stress: 0, score: 0, combo: 1, comboN: 0, dodged: 0, hits: 0, close: 0, scott: 0, shoutT: 9, spawnT: 1.4, powerT: 9, albinoT: rand(30, 45), replyCd: 0, won: false, overtime: false, sched: 0, lull: 0 });
+    Object.assign(game, { t: 0, stress: 0, score: 0, combo: 1, comboN: 0, dodged: 0, hits: 0, close: 0, boss: 0, shoutT: 9, spawnT: 1.4, powerT: 9, albinoT: rand(30, 45), replyCd: 0, won: false, overtime: false, sched: 0, lull: 0 });
     hero.pos.set(0, 0, 0); hero.vel.set(0, 0, 0); hero.shield = 0; hero.gold = 0; hero.coffee = 0; hero.invuln = 1;
   } else {
     game.overtime = true; game.stress = Math.max(0, game.stress - 20); hero.invuln = 1.5;
@@ -1307,7 +1307,7 @@ function endGame(won) {
   const [c, ap] = clockStr(game.t);
   if (game.score > game.best) { game.best = game.score; store.set('iz-best', game.best); }
   $('sScore').textContent = game.score.toLocaleString();
-  $('sDodged').textContent = game.dodged; $('sScott').textContent = game.scott; $('sClose').textContent = game.close; $('sHits').textContent = game.hits;
+  $('sDodged').textContent = game.dodged; $('sBoss').textContent = game.boss; $('sClose').textContent = game.close; $('sHits').textContent = game.hits;
   $('sBest').textContent = game.best.toLocaleString();
   $('postMsg').textContent = '';
   if (game.score > 0) postScore(); else loadBoard('boardEnd', 10);
