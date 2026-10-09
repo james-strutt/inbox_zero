@@ -11,7 +11,11 @@ export function initLobby(handlers) {
   lobby = joinLobby({
     onPeers: list => { peers = list; render(); },
     onSignal,
-    onStatus: s => { online = s === 'SUBSCRIBED'; if (!online) lobbyMessage('Online play is unavailable right now.'); render(); },
+    onStatus: (s, err) => {
+      online = s === 'SUBSCRIBED';
+      lobbyMessage(online ? '' : `Online play is unavailable right now (${s}${err ? ': ' + err.message : ''}). Retrying. Work networks often block live connections.`);
+      render();
+    },
   });
   $('acceptBtn').onclick = acceptInvite;
   $('declineBtn').onclick = declineOrCancel;

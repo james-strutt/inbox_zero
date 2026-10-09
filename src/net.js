@@ -13,7 +13,7 @@ export function joinLobby({ onPeers, onSignal, onStatus }) {
     onPeers(Object.entries(state).filter(([id]) => id !== myId).map(([id, [meta]]) => ({ id, name: meta.name, status: meta.status })));
   });
   ch.on('broadcast', { event: 'signal' }, ({ payload }) => { if (payload.to === myId) onSignal(payload); });
-  ch.subscribe(status => onStatus(status));
+  ch.subscribe((status, err) => onStatus(status, err));
   return {
     track: (name, status) => ch.track({ name, status }),
     untrack: () => ch.untrack(),
