@@ -13,7 +13,7 @@ export function initLobby(handlers) {
     onSignal,
     onStatus: (s, err) => {
       online = s === 'SUBSCRIBED';
-      lobbyMessage(online ? '' : `Online play is unavailable right now (${s}${err ? ': ' + err.message : ''}). Retrying. Work networks often block live connections.`);
+      lobbyMessage(online ? '' : `Reconnecting to online play (${s}${err ? ': ' + err.message : ''})… Work networks and VPNs often interrupt live connections.`);
       render();
     },
   });
@@ -22,7 +22,11 @@ export function initLobby(handlers) {
   $('onlineList').addEventListener('click', e => { const b = e.target.closest('button[data-id]'); if (b) invite(b.dataset.id); });
 }
 
-export function setLobbyName(n) { name = n.trim(); publish(); }
+let nameTimer = 0;
+export function setLobbyName(n) {
+  name = n.trim(); render();
+  clearTimeout(nameTimer); nameTimer = setTimeout(publish, 400);
+}
 export function setLobbyStatus(s) { status = s; publish(); }
 export function lobbyMessage(msg) { $('onlineMsg').textContent = msg; }
 
@@ -91,7 +95,6 @@ function render() {
     $('acceptBtn').hidden = pending.kind !== 'in';
     $('declineBtn').textContent = pending.kind === 'in' ? 'Decline' : 'Cancel';
   }
-  if (!online) { $('onlineCount').textContent = ''; list.replaceChildren(); return; }
   if (!name) { $('onlineCount').textContent = ''; list.replaceChildren(row('Enter your name above to appear online.')); return; }
   $('onlineCount').textContent = peers.length ? `${peers.length} other${peers.length === 1 ? '' : 's'} online` : 'Just you so far';
   list.replaceChildren(...(peers.length ? peers.map(peerRow) : [row('Nobody else is online right now. Leave this open and they will appear here.')]));
@@ -104,7 +107,7 @@ function peerRow(peer) {
   const n = document.createElement('span'); n.textContent = peer.name;
   const b = document.createElement('button'); b.className = 'btn small'; b.dataset.id = peer.id;
   b.textContent = peer.status === 'busy' ? 'In a game' : 'Invite';
-  b.disabled = peer.status === 'busy' || !!pending;
+  b.disabled = peer.status === 'busy' || !!pending || !online;
   li.append(n, b);
   return li;
 }
