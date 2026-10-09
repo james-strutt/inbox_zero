@@ -1008,29 +1008,14 @@ function updatePowerups(dt) {
 }
 
 /* ---------- golden albino ---------- */
-function drawAxolotl(g, w, h) {
-  g.scale(w / 600, h / 600);
-  g.lineWidth = 14; g.lineJoin = 'round'; g.lineCap = 'round'; g.strokeStyle = '#111';
-  const shape = (fill, draw) => { g.beginPath(); draw(); g.fillStyle = fill; g.fill(); g.stroke(); };
-  const ell = (x, y, rx, ry, rot = 0) => g.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
-  shape('#ffb52e', () => { g.moveTo(80, 160); g.quadraticCurveTo(200, 150, 330, 205); g.lineTo(300, 260); g.quadraticCurveTo(170, 230, 80, 160); });
-  shape('#ffe873', () => { g.moveTo(95, 175); g.quadraticCurveTo(210, 185, 320, 225); g.lineTo(300, 330); g.quadraticCurveTo(180, 290, 95, 175); });
-  for (const [x, y, r] of [[120, 305, .5], [265, 395, -.3], [470, 400, .3], [420, 330, 0]]) shape('#ffe873', () => ell(x, y, 34, 22, r));
-  shape('#ffe873', () => ell(300, 300, 150, 72));
-  for (const [x, y, r] of [[295, 205, -.35], [255, 260, -1.0], [255, 320, -1.6], [430, 190, .3], [480, 230, .9], [500, 290, 1.4]]) shape('#ffb52e', () => ell(x, y, 22, 55, r));
-  shape('#ffe873', () => ell(380, 290, 95, 80));
-  g.fillStyle = '#e01010'; for (const x of [338, 440]) { g.beginPath(); g.arc(x, 307, 13, 0, Math.PI * 2); g.fill(); }
-  g.lineWidth = 10; g.beginPath(); g.arc(390, 300, 26, .2 * Math.PI, .8 * Math.PI); g.stroke();
-}
 const albino = { g: new THREE.Group(), tilt: new THREE.Group(), flip: new THREE.Group(), halo: null, active: false, life: 0, age: 0,
   pos: new THREE.Vector3(), vel: new THREE.Vector3() };
 async function loadAlbino() {
-  const img = new Image(); img.src = `${import.meta.env.BASE_URL}golden-albino.png`;
-  let ok = true; try { await img.decode(); } catch { ok = false; }
-  const tex = canvasTex('albino', 512, 512, ok ? (g, w, h) => {
+  const img = new Image(); img.src = `${import.meta.env.BASE_URL}golden_albino.png`; await img.decode();
+  const tex = canvasTex('albino', 512, 512, (g, w, h) => {
     const s = Math.min(w / img.width, h / img.height);
     g.drawImage(img, (w - img.width * s) / 2, (h - img.height * s) / 2, img.width * s, img.height * s);
-  } : drawAxolotl);
+  });
   const geo = new THREE.PlaneGeometry(2.4, 2.4); geo.translate(0, 1.0, 0);
   albino.flip.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, alphaTest: .5, side: THREE.DoubleSide, roughness: .7, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: .55 })));
   albino.tilt.rotation.x = -0.32;
