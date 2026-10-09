@@ -13,7 +13,7 @@ export function initLobby(handlers) {
     onSignal,
     onStatus: (s, err) => {
       online = s === 'SUBSCRIBED';
-      lobbyMessage(online ? '' : `Reconnecting to online play (${s}${err ? ': ' + err.message : ''})… Work networks and VPNs often interrupt live connections.`);
+      lobbyMessage(online ? '' : `Reconnecting to online play (${s}${err ? ': ' + err.message : ''})…`);
       render();
     },
   });
