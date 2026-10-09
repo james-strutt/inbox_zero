@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { fetchTop, submitScore } from './leaderboard.js';
 import { openDuel, myId } from './net.js';
+import { createPostFx } from './postfx.js';
+import { applyDaylight } from './daylight.js';
 import { initLobby, setLobbyName, setLobbyStatus, lobbyMessage, invite } from './lobby.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -55,6 +57,7 @@ composer.setSize(innerWidth, innerHeight);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.6, 0.5, 1.0);
 composer.addPass(bloom);
+const postfx = createPostFx(composer, { isTouch, dpr: DPR });
 composer.addPass(new OutputPass());
 
 /* lights */
@@ -225,9 +228,34 @@ const rayAlpha = canvasTex(null, 16, 128, (g, w, h) => {
 });
 rayAlpha.colorSpace = THREE.NoColorSpace;
 
+function noiseNormalTex(size = 256) {
+  const h = new Float32Array(size * size), tmp = new Float32Array(size * size);
+  for (let i = 0; i < h.length; i++) h[i] = Math.random();
+  for (let pass = 0; pass < 2; pass++) {
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      let sum = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) sum += h[((y + dy + size) % size) * size + (x + dx + size) % size];
+      tmp[y * size + x] = sum / 9;
+    }
+    h.set(tmp);
+  }
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const g = c.getContext('2d'), img = g.createImageData(size, size);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const l = h[y * size + (x - 1 + size) % size], r = h[y * size + (x + 1) % size], u = h[((y - 1 + size) % size) * size + x], d = h[((y + 1) % size) * size + x];
+    const nx = (l - r) * 2.2, ny = (u - d) * 2.2, len = Math.hypot(nx, ny, 1);
+    const o = (y * size + x) * 4;
+    img.data[o] = (nx / len * .5 + .5) * 255; img.data[o + 1] = (ny / len * .5 + .5) * 255; img.data[o + 2] = (1 / len * .5 + .5) * 255; img.data[o + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(60, 60);
+  return t;
+}
+const carpetNormal = noiseNormalTex();
+
 /* ---------- shared materials ---------- */
 const M = {
-  floor: new THREE.MeshStandardMaterial({ map: carpetTex, roughness: .95, metalness: 0 }),
+  floor: new THREE.MeshStandardMaterial({ map: carpetTex, normalMap: carpetNormal, normalScale: new THREE.Vector2(.45, .45), roughness: .95, metalness: 0 }),
   wood: new THREE.MeshStandardMaterial({ color: 0x9a7354, roughness: .55, metalness: 0 }),
   deskWhite: new THREE.MeshStandardMaterial({ color: 0xb9b5cc, roughness: .5 }),
   metal: new THREE.MeshStandardMaterial({ color: 0x53587a, roughness: .35, metalness: .7 }),
@@ -268,6 +296,48 @@ function screenTex() {
 }
 const screenMats = [];
 
+/* ---------- diorama polish ---------- */
+const daylight = { sun, hemi, scene, skyMat: M.sky, screenMats, bloom, renderer, rayMat: null, sunOffset: new THREE.Vector3(-9, 16, -20), rim: new THREE.Color(1.2, .8, .5) };
+const forcedDay = Number(new URLSearchParams(location.search).get('day'));
+function dayFraction() {
+  if (forcedDay > 0) return forcedDay;
+  if (game.state === 'title' || game.state === 'loading') return .12;
+  return game.t / (game.mode === 'duel' ? DUEL_T : DAY);
+}
+const rayAnchors = [];
+const MOTE = new THREE.Color(.95, .75, .5);
+const softDisc = canvasTex(null, 128, 128, (g, w, h) => {
+  const r = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+  r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, w, h);
+});
+function contactShadow(x, z, w, d) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, opacity: .7 }));
+  m.rotation.x = -Math.PI / 2; m.position.set(x, .02, z);
+  return m;
+}
+function rugNormal(W, D) {
+  const t = carpetNormal.clone(); t.repeat.set((W * 2 + 1.6) / 2.3, (D * 2 + 1.6) / 2.3); return t;
+}
+function addPaperRim(mat, w, h) {
+  mat.onBeforeCompile = shader => {
+    shader.uniforms.uRimPx = { value: new THREE.Vector2(1.5 / w, 1.5 / h) };
+    shader.uniforms.uRim = { value: daylight.rim };
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform vec2 uRimPx; uniform vec3 uRim;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+      { float a = 1.0;
+        a = min(a, texture2D(map, vMapUv + vec2(uRimPx.x, 0.)).a); a = min(a, texture2D(map, vMapUv - vec2(uRimPx.x, 0.)).a);
+        a = min(a, texture2D(map, vMapUv + vec2(0., uRimPx.y)).a); a = min(a, texture2D(map, vMapUv - vec2(0., uRimPx.y)).a);
+        float edge = 1.0 - smoothstep(0.0, 0.7, a);
+        diffuseColor.rgb = mix(diffuseColor.rgb, uRim * 1.6, edge * .75); }`);
+  };
+}
+function paperBacking(geo, tex) {
+  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, color: 0x0b0d1c, alphaTest: .5, side: THREE.DoubleSide }));
+  m.scale.set(1.03, 1.02, 1); m.position.z = -.015;
+  return m;
+}
+
 /* ---------- geometry kit ---------- */
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
 function mesh(geo, mat, x = 0, y = 0, z = 0, cast = true, recv = true) {
@@ -286,6 +356,8 @@ function makeDesk(facing = 0) {
   g.add(mesh(box(.12, .35, .12), M.dark, 0, 1.15, -.3));
   const scr = mesh(box(1.25, .74, .06), [M.dark, M.dark, M.dark, M.dark, sm, M.dark], 0, 1.62, -.3);
   g.add(scr);
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .9), new THREE.MeshBasicMaterial({ map: softDisc, color: 0x5d86ff, transparent: true, opacity: .2, blending: THREE.AdditiveBlending, depthWrite: false }));
+  pool.rotation.x = -Math.PI / 2; pool.position.set(0, 1.0, .18); g.add(pool);
   g.add(mesh(box(.85, .03, .28), M.dark, -.05, 1.005, .15));
   // paper stack + mug
   const stack = mesh(box(.42, rand(.08, .3), .32), M.paper, rand(.65, .95), 1.05, rand(-.2, .3));
@@ -336,7 +408,7 @@ function buildOffice(W, D) {
   office.clear();
   arena.W = W; arena.D = D;
   // rug / play zone
-  const rug = mesh(new THREE.PlaneGeometry(W * 2 + 1.6, D * 2 + 1.6), new THREE.MeshStandardMaterial({ map: rugTex(W, D), roughness: .95 }), 0, .012, 0, false, true);
+  const rug = mesh(new THREE.PlaneGeometry(W * 2 + 1.6, D * 2 + 1.6), new THREE.MeshStandardMaterial({ map: rugTex(W, D), normalMap: rugNormal(W, D), normalScale: new THREE.Vector2(.4, .4), roughness: .95 }), 0, .012, 0, false, true);
   rug.rotation.x = -Math.PI / 2; office.add(rug);
 
   // back wall with windows
@@ -359,12 +431,13 @@ function buildOffice(W, D) {
   office.add(mesh(box(wallW, .5, .6), M.dark, 0, 1.3, bz + .1, false));
 
   // god rays from the windows
-  const rayMat = new THREE.MeshBasicMaterial({ color: 0xffa860, alphaMap: rayAlpha, transparent: true, opacity: .16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  rayAnchors.length = 0;
+  const rayMat = daylight.rayMat = new THREE.MeshBasicMaterial({ color: 0xffa860, alphaMap: rayAlpha, transparent: true, opacity: .16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
   for (let i = 0; i < 4; i++) {
     const r = new THREE.Mesh(new THREE.PlaneGeometry(rand(1.2, 2.4), 9), rayMat);
     r.position.set(-W * .55 + i * (W * .4) + rand(-1, 1), 4.2, bz + 3.4);
     r.rotation.set(-0.55, .3, .12);
-    office.add(r);
+    office.add(r); rayAnchors.push(r.position);
   }
 
   // back row of desks facing the camera
@@ -378,13 +451,18 @@ function buildOffice(W, D) {
     rows.push([-W - 3.2, z, Math.PI / 2]);
     rows.push([W + 3.2, z, -Math.PI / 2]);
   }
-  for (const [x, z, r] of rows) { const d = makeDesk(r); d.position.set(x, 0, z); office.add(d); }
+  const furniture = [];
+  for (const [x, z, r] of rows) { const d = makeDesk(r); d.position.set(x, 0, z); office.add(d); furniture.push(d); }
 
   // plants, cabinets, cooler near corners and front
   const plants = [[-W - 2.2, -D - 2.4], [W + 2.2, -D - 2.4], [-W - 2.2, D + 2.6], [W + 2.2, D + 2.6], [0, D + 3.6]];
-  plants.forEach(([x, z], i) => { const p = makePlant(rand(1.3, 1.6)); p.position.set(x, 0, z); p.rotation.y = rand(0, 6); office.add(p); });
-  for (const [x, o] of [[-W * .5, 0], [-W * .5 + 1.5, 0]]) { const cab = makeCabinet(); cab.scale.setScalar(1.5); cab.position.set(x, 0, D + 2.8); office.add(cab); }
-  const cool = makeCooler(); cool.scale.setScalar(1.5); cool.position.set(W * .55, 0, D + 2.8); office.add(cool);
+  plants.forEach(([x, z], i) => { const p = makePlant(rand(1.3, 1.6)); p.position.set(x, 0, z); p.rotation.y = rand(0, 6); office.add(p); furniture.push(p); });
+  for (const [x, o] of [[-W * .5, 0], [-W * .5 + 1.5, 0]]) { const cab = makeCabinet(); cab.scale.setScalar(1.5); cab.position.set(x, 0, D + 2.8); office.add(cab); furniture.push(cab); }
+  const cool = makeCooler(); cool.scale.setScalar(1.5); cool.position.set(W * .55, 0, D + 2.8); office.add(cool); furniture.push(cool);
+  for (const item of furniture) {
+    const size = new THREE.Box3().setFromObject(item).getSize(V);
+    office.add(contactShadow(item.position.x, item.position.z, size.x * 1.35, size.z * 1.35));
+  }
 
   // shadow frustum
   const sc = sun.shadow.camera, ext = Math.max(W, D) + 8;
@@ -652,6 +730,8 @@ async function loadHero() {
   hero.mesh = new THREE.Mesh(geo, hero.mat);
   hero.mesh.castShadow = true;
   hero.mesh.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: tex, alphaTest: .5 });
+  addPaperRim(hero.mat, img.width, img.height);
+  hero.mesh.add(paperBacking(geo, tex));
   hero.flip.add(hero.mesh);
   for (let i = 0; i < 6; i++) {
     const gm = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, color: 0x52d6c4, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
@@ -1453,8 +1533,11 @@ function tick() {
   camera.lookAt(camLook);
   const baseFov = innerWidth / innerHeight < 1 ? 42 : 38;
   camera.fov = baseFov + camRig.fovKick * 3; camera.updateProjectionMatrix();
+  applyDaylight(dayFraction(), daylight);
   sun.target.position.set(camRig.target.x, 0, camRig.target.z);
-  sun.position.set(camRig.target.x - 9, 16, camRig.target.z - 20);
+  sun.position.set(camRig.target.x + daylight.sunOffset.x, daylight.sunOffset.y, camRig.target.z + daylight.sunOffset.z);
+  if (rayAnchors.length && Math.random() < realDt * 14) { const a = pick(rayAnchors); glow.spawn(V2.set(a.x + rand(-1.5, 1.5), rand(.3, 7), a.z + rand(-1.5, 2.5)), V.set(rand(-.15, .15), rand(.04, .18), rand(-.1, .1)), MOTE, .06, .09, rand(4, 7), -.01, .2); }
+  postfx.tick(realDt);
 
   composer.render();
 }
@@ -1463,6 +1546,7 @@ function onResize() {
   renderer.setSize(innerWidth, innerHeight, false);
   composer.setSize(innerWidth, innerHeight);
   bloom.resolution.set(innerWidth, innerHeight);
+  postfx.setSize(innerWidth, innerHeight);
   frameCamera();
   const s = innerHeight * DPR / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
   glow.mat.uniforms.uScale.value = s; dust.mat.uniforms.uScale.value = s;
@@ -1527,6 +1611,8 @@ function buildOpponent() {
   opp.mesh = new THREE.Mesh(hero.geo, new THREE.MeshStandardMaterial({ map: hero.texture, alphaTest: .5, side: THREE.DoubleSide, roughness: .85, metalness: 0, color: 0xffb3b3, emissive: 0xff8080, emissiveMap: hero.texture, emissiveIntensity: .35 }));
   opp.mesh.castShadow = true;
   opp.mesh.customDepthMaterial = hero.mesh.customDepthMaterial;
+  addPaperRim(opp.mesh.material, hero.tex.width, hero.tex.height);
+  opp.mesh.add(paperBacking(hero.geo, hero.texture));
   opp.flip.add(opp.mesh);
   const tilt = new THREE.Group(); tilt.rotation.x = -0.32; tilt.add(opp.flip); opp.group.add(tilt);
   opp.shield = new THREE.Mesh(shieldMesh.geometry, shieldMat.clone());
