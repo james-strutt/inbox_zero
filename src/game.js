@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { fetchTop, submitScore } from './leaderboard.js';
+import { openDuel, myId } from './net.js';
+import { initLobby, setLobbyName, setLobbyStatus, lobbyMessage, invite } from './lobby.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -656,7 +658,7 @@ async function loadHero() {
     gm.visible = false; scene.add(gm);
     hero.ghosts.push({ m: gm, life: 0 });
   }
-  hero.tex = img;
+  hero.tex = img; hero.geo = geo; hero.texture = tex;
 }
 
 /* ---------- input ---------- */
@@ -667,7 +669,8 @@ addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
   keys.add(k);
-  if ((k === ' ' || k === 'shift') && game.state === 'playing') tryDash();
+  if (game.state === 'playing' && game.mode === 'duel') { if (k === ' ') throwAtOpponent(); if (k === 'shift') tryDash(); }
+  else if ((k === ' ' || k === 'shift') && game.state === 'playing') tryDash();
   if ((k === 'p' || k === 'escape') && (game.state === 'playing' || game.state === 'paused')) togglePause();
   if (k === 'm') Sfx.setMuted(!Sfx.muted);
   if (k === 'enter' && game.state === 'title') clockIn();
@@ -707,7 +710,7 @@ function inputVec(out) {
 
 /* ---------- game state ---------- */
 const DAY = 150; // seconds from 9:00 to 17:00
-const game = { state: 'loading', t: 0, stress: 0, score: 0, combo: 1, comboN: 0, dodged: 0, hits: 0, close: 0, boss: 0, shoutT: 9, spawnT: 1.5, powerT: 9, overtime: false,
+const game = { state: 'loading', mode: 'solo', t: 0, stress: 0, score: 0, combo: 1, comboN: 0, dodged: 0, hits: 0, close: 0, boss: 0, shoutT: 9, spawnT: 1.5, powerT: 9, overtime: false,
   lastHitT: -10, events: [], projectiles: [], powerups: [], calls: [], replyCd: 0, best: store.get('iz-best', 0), titleT: 0, slowmo: 1, won: false, nextBeat: 0 };
 
 const QUOTES = ['Jason!', 'I would welcome your thoughts!', 'The Boss: Got 5 mins?', 'Per my last email…', 'Just circling back!', 'Quick question?', 'Can we jump on a call?', 'Let’s take this offline', 'Any update on this?', 'Adding a few people', 'Gentle reminder', 'Can you action this?', 'Looping in your manager', 'Did you see my Teams msg?', 'Moving this to Friday 4:45', 'Sorry, wrong thread', 'Reply All: Thanks!', 'Need this by EOD', 'Who owns this?'];
@@ -749,6 +752,16 @@ function makeProjMesh(type) {
   } else if (type === 'sticky') {
     const sm = pick(stickyMats);
     m = new THREE.Mesh(GEO.sticky, [M.stickySide, M.stickySide, M.stickySide, M.stickySide, sm, sm]);
+  } else if (type === 'stapler') {
+    m = new THREE.Group();
+    m.add(mesh(new THREE.BoxGeometry(.95, .18, .3), M.dark));
+    m.add(mesh(new THREE.BoxGeometry(.9, .16, .26), new THREE.MeshStandardMaterial({ color: 0x2a2f55, roughness: .35, metalness: .5 }), .02, .2, 0));
+    m.add(mesh(new THREE.BoxGeometry(.3, .08, .28), M.ceramic, -.25, .1, 0));
+  } else if (type === 'mug') {
+    m = new THREE.Group();
+    m.add(mesh(new THREE.CylinderGeometry(.3, .25, .55, 24), M.ceramic));
+    m.add(mesh(new THREE.CylinderGeometry(.27, .27, .02, 24), M.coffee, 0, .27, 0));
+    m.add(mesh(new THREE.TorusGeometry(.15, .045, 10, 20), M.ceramic, .32, 0, 0));
   } else if (type === 'invite') {
     m = new THREE.Mesh(GEO.cal, [calSide, calSide, calSide, calSide, calMat, calMat]);
   }
@@ -761,6 +774,8 @@ const PT = {
   urgent: { r: .62, speed: [5, 6], stress: 20, y: 1.6, trail: C.red, home: 1.6, life: 7 },
   sticky: { r: .42, speed: [10.5, 13], stress: 8, y: 1.2, trail: C.yellow },
   invite: { r: .95, speed: [3.2, 4.2], stress: 22, y: 1.3, trail: C.blue },
+  stapler: { r: .5, speed: [6.5, 7.5], stress: 18, y: 1.3, trail: C.dust },
+  mug: { r: .45, speed: [7.5, 9], stress: 14, y: 1.4, trail: C.amber },
 };
 
 function edgePoint(margin = 3) {
@@ -815,8 +830,8 @@ function ambientShout() {
 function spawnProjectile(type, from, dir, opts = {}) {
   const def = PT[type];
   const mesh = makeProjMesh(type);
-  const sp = rand(...def.speed) * (opts.speedMul || 1);
-  const p = { type, def, mesh, pos: from.clone(), vel: dir.clone().setY(0).normalize().multiplyScalar(sp), speed: sp, age: 0,
+  const sp = opts.speed ?? rand(...def.speed) * (opts.speedMul || 1);
+  const p = { type, def, mesh, id: opts.id, owner: opts.owner, pos: from.clone(), vel: dir.clone().setY(0).normalize().multiplyScalar(sp), speed: sp, age: 0,
     life: def.life || 99, minD: 99, hit: false, harmless: !!opts.harmless, spin: rand(-1, 1), phase: rand(0, 6) };
   p.pos.y = def.y;
   mesh.position.copy(p.pos);
@@ -966,10 +981,14 @@ function spawnPower() {
   const weights = [game.stress > 40 ? 5 : 2.5, 2, game.projectiles.length > 8 ? 3 : 1.4];
   let r = Math.random() * weights.reduce((a, b) => a + b), type = 'coffee';
   for (let i = 0; i < 3; i++) { r -= weights[i]; if (r <= 0) { type = PU[i]; break; } }
+  spawnPowerAt(type, x, z);
+}
+function spawnPowerAt(type, x, z, id) {
   const m = makePowerMesh(type); m.position.set(x, 0, z); m.scale.setScalar(.01); scene.add(m);
-  game.powerups.push({ type, m, life: 10, age: 0, pos: new THREE.Vector3(x, 0, z) });
+  game.powerups.push({ type, m, id, life: 10, age: 0, pos: new THREE.Vector3(x, 0, z) });
 }
 function collectPower(p) {
+  if (p.id) duelSend({ k: 'took', id: p.id });
   Sfx.pickup();
   const at = new THREE.Vector3(p.pos.x, 2.4, p.pos.z);
   burst(V2.set(p.pos.x, 1, p.pos.z), p.type === 'coffee' ? C.amber : p.type === 'ooo' ? C.teal : C.red, 40, 7, .45, .8);
@@ -1092,7 +1111,7 @@ function takeHit(stress, quote) {
   floatText(new THREE.Vector3(hero.pos.x + .2, hero.H + .9, hero.pos.z), quote || pick(QUOTES), 'quote', 1.8, .5);
   paperBurst(new THREE.Vector3(hero.pos.x, 1.8, hero.pos.z), 16);
   game.slowmo = .35;
-  if (game.stress >= 100) endGame(false);
+  if (game.stress >= 100) { if (game.mode === 'duel') loseDuel(); else endGame(false); }
 }
 function blockFx(p) {
   Sfx.block();
@@ -1123,6 +1142,7 @@ function updateProjectiles(dt) {
     // orientation
     if (p.type === 'invite') { m.rotation.x += dt * 2.2 * Math.sign(p.vel.z || 1); m.rotation.z += dt * 1.4 * p.spin; m.rotation.y = .2; }
     else if (p.type === 'sticky') { m.rotation.set(-.75, 0, m.rotation.z + dt * 12 * (p.spin > 0 ? 1 : -1)); }
+    else if (p.type === 'stapler' || p.type === 'mug') { m.rotation.x += dt * 7 * p.spin; m.rotation.y = Math.atan2(-p.vel.z, p.vel.x); }
     else { m.rotation.set(-.62 + Math.sin(p.age * 9 + p.phase) * .12, Math.sin(p.age * 6 + p.phase) * .25, Math.atan2(-p.vel.z, p.vel.x) * .25 + Math.sin(p.age * 11) * .1); }
     if (p.type === 'urgent') { const s = 1.15 + .08 * Math.sin(p.age * 18); m.scale.setScalar(s); }
     // trail
@@ -1135,11 +1155,13 @@ function updateProjectiles(dt) {
     const d = Math.hypot(p.pos.x - hx, p.pos.z - hz);
     p.minD = Math.min(p.minD, d);
     if (hero.shield > 0 && d < 2.0 + p.def.r * .5) {
+      if (p.owner === 'them') duelSend({ k: 'hit', id: p.id, blocked: 1 });
       if (p.tagKind === 'boss') game.boss++;
       blockFx(p.pos); destroyProjectile(p, true); game.projectiles.splice(i, 1); addDodge(); continue;
     }
     if (d < p.def.r + .62 && hero.invuln <= 0) {
-      takeHit(p.def.stress, hitQuote(p.tagKind)); destroyProjectile(p, true); game.projectiles.splice(i, 1);
+      if (p.owner === 'them') duelSend({ k: 'hit', id: p.id });
+      takeHit(p.def.stress, p.owner === 'them' ? `${duel.peer.name}: ${pick(DUEL_QUOTES)}` : hitQuote(p.tagKind)); destroyProjectile(p, true); game.projectiles.splice(i, 1);
       if (game.state !== 'playing') return; continue;
     }
     const out = Math.abs(p.pos.x) > W + 6 || Math.abs(p.pos.z) > D + 6;
@@ -1238,11 +1260,12 @@ const hudCache = {};
 function setText(id, v) { if (hudCache[id] !== v) { hudCache[id] = v; $(id).textContent = v; } }
 function stressLabel(s) { return s < 25 ? ['Calm', '#52d6c4'] : s < 50 ? ['Busy', '#9fe0a0'] : s < 70 ? ['Frazzled', '#ffb357'] : s < 88 ? ['Fried', '#ff8a5c'] : ['Burnout imminent', '#ff5b61']; }
 function updateHUD() {
-  const [c, ap] = clockStr(game.t);
+  const [c, ap] = game.mode === 'duel' ? duelClock() : clockStr(game.t);
   const key = c + ap;
   if (hudCache.clock !== key) { hudCache.clock = key; $('clock').innerHTML = `${c}<small>${ap}</small>`; }
-  $('dayFill').style.width = Math.min(100, game.t / DAY * 100) + '%';
-  $('dayFill').style.background = game.t > DAY ? 'var(--coral)' : '';
+  $('dayFill').style.width = Math.min(100, game.t / (game.mode === 'duel' ? DUEL_T : DAY) * 100) + '%';
+  $('dayFill').style.background = game.mode === 'solo' && game.t > DAY ? 'var(--coral)' : '';
+  if (game.mode === 'duel') { $('oppFill').style.width = opp.stress + '%'; const [ol, oc] = stressLabel(opp.stress); $('oppState').textContent = ol; $('oppState').style.color = oc; }
   $('stressFill').style.width = game.stress + '%';
   $('stressFill').style.backgroundPosition = '0 0';
   const [lbl, col] = stressLabel(game.stress);
@@ -1282,6 +1305,7 @@ function resetWorld() {
 }
 function startGame(overtime = false) {
   Sfx.init();
+  setLobbyStatus('busy');
   const [W, D] = arenaForAspect();
   if (W !== arena.W || D !== arena.D) { buildOffice(W, D); frameCamera(); }
   if (!overtime) {
@@ -1299,6 +1323,7 @@ function startGame(overtime = false) {
   canvas.focus({ preventScroll: true });
 }
 function togglePause() {
+  if (game.mode === 'duel') { if (game.state === 'playing') banner('No pausing in a duel', 'The emails wait for no one', 1.5); return; }
   if (game.state === 'playing') { game.state = 'paused'; show('pauseScreen', true); joy.active = false; $('joy').style.display = 'none'; }
   else if (game.state === 'paused') { game.state = 'playing'; show('pauseScreen', false); canvas.focus({ preventScroll: true }); }
 }
@@ -1332,6 +1357,7 @@ function endGame(won) {
   setTimeout(() => { show('endScreen', true); $('againBtn').focus({ preventScroll: true }); }, won ? 600 : 1100);
 }
 function goTitle() {
+  closeDuel(); setLobbyStatus('idle');
   resetWorld(); game.state = 'title';
   hero.pos.set(0, 0, 0); hero.vel.set(0, 0, 0); hero.shield = 0; hero.gold = 0; hero.coffee = 0;
   loadBoard('boardTitle', 5);
@@ -1340,7 +1366,7 @@ function goTitle() {
   $('bestLine').textContent = game.best ? `Best: ${game.best.toLocaleString()}` : '';
 }
 
-$('againBtn').onclick = () => startGame();
+$('againBtn').onclick = () => { if (game.mode === 'duel') goTitle(); else startGame(); };
 $('overtimeBtn').onclick = () => startGame(true);
 $('resumeBtn').onclick = () => togglePause();
 $('quitBtn').onclick = () => { game.state = 'title'; goTitle(); };
@@ -1357,7 +1383,9 @@ function tick() {
   game.slowmo = damp(game.slowmo, 1, 6, realDt);
   if (game.state === 'playing') dt *= game.slowmo;
 
-  if (game.state === 'playing') {
+  if (game.state === 'playing' && game.mode === 'duel') {
+    tickDuel(dt);
+  } else if (game.state === 'playing') {
     game.t += dt;
     if (game.replyCd > 0) game.replyCd -= dt;
     // schedule banners
@@ -1398,6 +1426,7 @@ function tick() {
     updateProjectiles(dt);
     updatePowerups(dt);
     updateAlbino(dt);
+    updateOpponent(dt);
     updateShockwaves(dt);
     updateConfetti(dt);
     glow.update(dt); dust.update(dt);
@@ -1475,10 +1504,203 @@ function clockIn() {
   const input = $('nameInput'), name = input.value.trim();
   if (!name) { input.value = ''; input.reportValidity(); input.focus(); return; }
   store.set('iz-name', name);
+  game.mode = 'solo';
   startGame();
 }
 $('nameInput').value = store.get('iz-name', '');
 $('startForm').addEventListener('submit', e => { e.preventDefault(); clockIn(); });
+
+/* ---------- duel ---------- */
+const DUEL_T = 180;
+const THROWS = { email: 5, sticky: 2, stapler: 1.5, mug: 1.5 };
+const DUEL_QUOTES = ['Got a sec?', 'Read receipt requested', 'Per my last email', 'FYI', 'Thoughts?', 'Looping you in', 'Friendly reminder'];
+const r2 = v => Math.round(v * 100) / 100;
+function weightedPick(w) {
+  let total = 0; for (const k in w) total += w[k];
+  let r = Math.random() * total;
+  for (const k in w) { r -= w[k]; if (r <= 0) return k; }
+  return Object.keys(w)[0];
+}
+const opp = { group: new THREE.Group(), flip: new THREE.Group(), mesh: null, shield: null, label: null, seen: false,
+  pos: new THREE.Vector3(), target: new THREE.Vector3(), vel: new THREE.Vector3(), facing: 1, stress: 0, shieldT: 0, goldT: 0 };
+function buildOpponent() {
+  opp.mesh = new THREE.Mesh(hero.geo, new THREE.MeshStandardMaterial({ map: hero.texture, alphaTest: .5, side: THREE.DoubleSide, roughness: .85, metalness: 0, color: 0xffb3b3, emissive: 0xff8080, emissiveMap: hero.texture, emissiveIntensity: .35 }));
+  opp.mesh.castShadow = true;
+  opp.mesh.customDepthMaterial = hero.mesh.customDepthMaterial;
+  opp.flip.add(opp.mesh);
+  const tilt = new THREE.Group(); tilt.rotation.x = -0.32; tilt.add(opp.flip); opp.group.add(tilt);
+  opp.shield = new THREE.Mesh(shieldMesh.geometry, shieldMat.clone());
+  opp.shield.position.y = 1.55; opp.shield.visible = false; opp.group.add(opp.shield);
+  opp.group.visible = false; scene.add(opp.group);
+  opp.label = document.createElement('div'); opp.label.className = 'ptag'; opp.label.hidden = true;
+  $('floaters').appendChild(opp.label);
+}
+let duel = null;
+function duelSend(m) { if (duel && !duel.ended) duel.net.send(m); }
+function startDuel(duelId, peer, host) {
+  if (duel) closeDuel();
+  const net = openDuel(duelId, { onMsg: onDuelMsg, onPeerJoined: beginDuel, onPeerLeft: () => { if (duel && !duel.ended && game.state === 'playing') endDuel('left'); } });
+  duel = { id: duelId, peer, host, net, ended: false, ready: false, countdown: 3, spawnT: 2.5, powerT: 6, sendT: 0, throwCd: 0, seq: 0, powerSeq: 0 };
+  banner(`Connecting to ${peer.name}…`, 'Hang tight', 12);
+  duel.connectTimer = setTimeout(() => { if (duel && !duel.ready) { closeDuel(); lobbyMessage(`${peer.name} never connected.`); } }, 12000);
+}
+function beginDuel() {
+  if (!duel || duel.ready) return;
+  duel.ready = true; clearTimeout(duel.connectTimer);
+  startGame();
+  game.mode = 'duel';
+  hero.pos.set(duel.host ? -4 : 4, 0, 0); hero.facing = duel.host ? 1 : -1;
+  opp.pos.set(duel.host ? 4 : -4, 0, 0); opp.target.copy(opp.pos); opp.vel.set(0, 0, 0);
+  opp.stress = 0; opp.shieldT = 0; opp.goldT = 0; opp.seen = false;
+  opp.group.visible = true; opp.label.hidden = false; opp.label.textContent = duel.peer.name;
+  $('oppName').textContent = duel.peer.name; $('oppMeter').hidden = false; $('throwBtn').hidden = false;
+  $('dayLabel').textContent = 'Duel'; $('againBtn').textContent = 'Back to lobby';
+  hero.invuln = 3.4;
+  banner('Duel!', `${duel.peer.name} vs you. Space throws, Shift dashes`, 1);
+}
+function closeDuel() {
+  if (duel) { clearTimeout(duel.connectTimer); duel.net.close(); duel = null; }
+  game.mode = 'solo';
+  opp.group.visible = false; if (opp.label) opp.label.hidden = true;
+  $('oppMeter').hidden = true; $('throwBtn').hidden = true;
+  $('dayLabel').textContent = 'Wednesday'; $('againBtn').textContent = 'New workday';
+}
+function tickDuel(dt) {
+  game.t += dt;
+  if (duel.countdown > 0) {
+    const before = Math.ceil(duel.countdown); duel.countdown -= dt; const after = Math.ceil(duel.countdown);
+    if (after !== before && after > 0) banner(String(after), '', .9);
+    if (duel.countdown <= 0) banner('Go!', 'Throw everything', 1.2);
+  } else if (duel.host) {
+    duel.spawnT -= dt; if (duel.spawnT <= 0) { hostSpawnAmbient(); duel.spawnT = rand(2.2, 3.4); }
+    duel.powerT -= dt; if (duel.powerT <= 0) { hostSpawnPower(); duel.powerT = rand(8, 12); }
+    if (game.t >= DUEL_T) {
+      const winner = game.stress < opp.stress ? myId : game.stress > opp.stress ? duel.peer.id : null;
+      duelSend({ k: 'timeup', winner });
+      endDuel(winner === myId ? 'won' : winner ? 'lost' : 'draw');
+      return;
+    }
+  }
+  duel.throwCd = Math.max(0, duel.throwCd - dt);
+  if (game.t - game.lastHitT > 4) game.stress = Math.max(0, game.stress - dt * .8);
+  duel.sendT -= dt;
+  if (duel.sendT <= 0) {
+    duel.sendT = 1 / 12;
+    duelSend({ k: 'pos', p: [r2(hero.pos.x), r2(hero.pos.z)], v: [r2(hero.vel.x), r2(hero.vel.z)], f: hero.facing, s: Math.round(game.stress), sh: r2(hero.shield), g: r2(hero.gold) });
+  }
+  $('throwBtn').style.opacity = duel.throwCd > 0 ? .45 : 1;
+}
+function updateOpponent(dt) {
+  if (!duel || !duel.ready) return;
+  opp.target.addScaledVector(opp.vel, dt);
+  opp.target.x = clamp(opp.target.x, -arena.W, arena.W); opp.target.z = clamp(opp.target.z, -arena.D, arena.D);
+  opp.pos.x = damp(opp.pos.x, opp.target.x, 14, dt); opp.pos.z = damp(opp.pos.z, opp.target.z, 14, dt);
+  opp.group.position.copy(opp.pos);
+  opp.flip.scale.x = damp(opp.flip.scale.x, opp.facing, 16, dt);
+  opp.shieldT = Math.max(0, opp.shieldT - dt); opp.goldT = Math.max(0, opp.goldT - dt);
+  opp.shield.visible = opp.shieldT > 0;
+  opp.shield.material.uniforms.uTime.value += dt; opp.shield.material.uniforms.uAlpha.value = 1;
+  opp.shield.material.uniforms.uColor.value.setHex(opp.goldT > 0 ? 0xffd34d : 0x52d6c4);
+  opp.shield.rotation.y += dt * .6;
+  V.copy(opp.pos); V.y = hero.H + .5; V.project(camera);
+  opp.label.style.transform = `translate(${(V.x * .5 + .5) * innerWidth}px,${(-V.y * .5 + .5) * innerHeight}px) translate(-50%,-100%)`;
+}
+function onDuelMsg(m) {
+  if (!duel) return;
+  if (m.k === 'pos') {
+    opp.target.set(m.p[0], 0, m.p[1]); opp.vel.set(m.v[0], 0, m.v[1]); opp.facing = m.f;
+    opp.stress = m.s; opp.shieldT = m.sh; opp.goldT = m.g;
+    if (!opp.seen) { opp.seen = true; opp.pos.copy(opp.target); }
+    return;
+  }
+  if (game.state !== 'playing' || duel.ended) return;
+  if (m.k === 'throw') {
+    spawnProjectile(m.type, new THREE.Vector3(m.from[0], 0, m.from[1]), new THREE.Vector3(m.dir[0], 0, m.dir[1]), { speed: m.sp, tag: null, id: m.id, owner: 'them' });
+    Sfx.pop();
+  } else if (m.k === 'spawn') {
+    spawnProjectile(m.type, new THREE.Vector3(m.from[0], 0, m.from[1]), new THREE.Vector3(m.dir[0], 0, m.dir[1]), { speed: m.sp, tag: m.tag });
+  } else if (m.k === 'hit') {
+    const i = game.projectiles.findIndex(p => p.id === m.id);
+    if (i < 0) return;
+    const p = game.projectiles[i];
+    if (m.blocked) burst(V2.set(p.pos.x, 1.6, p.pos.z), C.teal, 18, 6, .4, .5);
+    else { addScore(50, new THREE.Vector3(p.pos.x, 3, p.pos.z)); Sfx.close(); }
+    destroyProjectile(p, true); game.projectiles.splice(i, 1);
+  } else if (m.k === 'power') {
+    spawnPowerAt(m.type, m.x, m.z, m.id);
+  } else if (m.k === 'took') {
+    const i = game.powerups.findIndex(p => p.id === m.id);
+    if (i >= 0) { scene.remove(game.powerups[i].m); game.powerups.splice(i, 1); }
+  } else if (m.k === 'burnout') {
+    endDuel('won');
+  } else if (m.k === 'timeup') {
+    endDuel(m.winner === myId ? 'won' : m.winner ? 'lost' : 'draw');
+  }
+}
+function throwAtOpponent() {
+  if (!duel || !duel.ready || duel.countdown > 0 || duel.throwCd > 0 || game.state !== 'playing') return;
+  duel.throwCd = .55;
+  const type = weightedPick(THROWS);
+  const sp = rand(...PT[type].speed) * 1.1;
+  const dist = Math.hypot(opp.pos.x - hero.pos.x, opp.pos.z - hero.pos.z);
+  const dir = new THREE.Vector3().copy(opp.pos).addScaledVector(opp.vel, Math.min(1.2, dist / sp)).sub(hero.pos).setY(0);
+  if (dir.lengthSq() < .01) dir.set(hero.facing, 0, 0);
+  dir.normalize();
+  const from = hero.pos.clone().addScaledVector(dir, .9);
+  const id = `${myId}:${++duel.seq}`;
+  spawnProjectile(type, from, dir, { speed: sp, tag: null, id, owner: 'me', harmless: true });
+  duelSend({ k: 'throw', type, from: [r2(from.x), r2(from.z)], dir: [r2(dir.x), r2(dir.z)], sp: r2(sp), id });
+  if (Math.abs(dir.x) > .2) hero.facing = Math.sign(dir.x);
+  Sfx.pop();
+}
+function hostSpawnAmbient() {
+  const type = weightedPick({ email: 6, sticky: 3, invite: 1.5 });
+  const at = Math.random() < .5 ? hero.pos : opp.pos;
+  const from = edgePoint();
+  const dir = new THREE.Vector3(at.x + rand(-3, 3), 0, at.z + rand(-3, 3)).sub(from).setY(0).normalize();
+  const sp = rand(...PT[type].speed), tag = chooseTag(type);
+  spawnProjectile(type, from, dir, { speed: sp, tag });
+  duelSend({ k: 'spawn', type, from: [r2(from.x), r2(from.z)], dir: [r2(dir.x), r2(dir.z)], sp: r2(sp), tag });
+  Sfx.pop();
+}
+function hostSpawnPower() {
+  const type = weightedPick({ coffee: 3, ooo: 2, unsub: 1 });
+  const x = r2(rand(-arena.W + 1.5, arena.W - 1.5)), z = r2(rand(-arena.D + 1.2, arena.D - 1.2));
+  const id = `p${++duel.powerSeq}`;
+  spawnPowerAt(type, x, z, id);
+  duelSend({ k: 'power', type, x, z, id });
+}
+function loseDuel() {
+  duelSend({ k: 'burnout' });
+  paperBurst(new THREE.Vector3(hero.pos.x, 2, hero.pos.z), 60); camRig.shake = .9;
+  endDuel('lost');
+}
+function endDuel(result) {
+  if (!duel || duel.ended) return;
+  duel.ended = true; game.state = 'ended'; game.won = result === 'won' || result === 'left';
+  const peer = duel.peer.name;
+  if (game.won) Sfx.win(); else Sfx.lose();
+  $('endBar').textContent = 'Meeting notes';
+  $('endSubject').textContent = `Duel: you vs ${peer}`;
+  $('endTitle').textContent = { won: `You out-emailed ${peer}`, lost: `${peer} buried you`, draw: 'Stalemate', left: `${peer} left the duel` }[result];
+  $('endLede').textContent = { won: `${peer} burnt out first. Your stress finished at ${Math.round(game.stress)}%.`, lost: `Your inbox hit 100% while ${peer} was still standing. Take a walk.`, draw: 'Three minutes, two inboxes, exactly the same stress. Nobody wins in middle management.', left: 'They closed the tab. That counts as a win.' }[result];
+  $('sScore').textContent = game.score.toLocaleString();
+  $('sDodged').textContent = game.dodged; $('sBoss').textContent = game.boss; $('sClose').textContent = game.close; $('sHits').textContent = game.hits;
+  $('sBest').textContent = game.best.toLocaleString();
+  $('postMsg').textContent = ''; $('boardEnd').replaceChildren();
+  $('overtimeBtn').hidden = true; $('rematchBtn').hidden = result === 'left';
+  joy.active = false; $('joy').style.display = 'none';
+  setTimeout(() => { show('endScreen', true); $('againBtn').focus({ preventScroll: true }); }, game.won ? 600 : 1100);
+}
+$('rematchBtn').onclick = () => { const peerId = duel?.peer.id; goTitle(); if (peerId) invite(peerId); };
+$('throwBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); throwAtOpponent(); });
+$('nameInput').addEventListener('input', () => setLobbyName($('nameInput').value));
+initLobby({ onDuelStart: startDuel });
+setLobbyName(store.get('iz-name', ''));
+function duelClock() {
+  const left = Math.max(0, DUEL_T - game.t);
+  return [`${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`, 'left'];
+}
 
 /* ---------- legend thumbnails ---------- */
 function buildLegend() {
@@ -1501,6 +1723,7 @@ function buildLegend() {
 async function boot() {
   await loadHero();
   await loadAlbino();
+  buildOpponent();
   const [W, D] = arenaForAspect();
   buildOffice(W, D);
   onResize();

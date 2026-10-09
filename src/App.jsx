@@ -18,9 +18,13 @@ export default function App() {
         <div className="chip stress">
           <div className="stress-top"><span className="label">Stress</span><span id="stressState">Calm</span></div>
           <div className="meter"><div id="stressFill"></div></div>
+          <div className="opp" id="oppMeter" hidden>
+            <div className="stress-top"><span className="label" id="oppName">Them</span><span id="oppState"></span></div>
+            <div className="meter"><div id="oppFill"></div></div>
+          </div>
         </div>
         <div className="chip clock">
-          <div className="label">Wednesday</div>
+          <div className="label" id="dayLabel">Wednesday</div>
           <div id="clock">9:00<small>AM</small></div>
           <div className="day"><div id="dayFill"></div></div>
         </div>
@@ -44,6 +48,7 @@ export default function App() {
           <button className="icon-btn" id="pauseBtn" aria-label="Pause" title="Pause (P)">
             <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
           </button>
+          <button className="icon-btn throw" id="throwBtn" hidden aria-label="Throw at opponent" title="Throw (Space)">THROW</button>
           <div id="dashWrap">
             <svg id="dashRing" viewBox="0 0 70 70"><circle cx="35" cy="35" r="32" fill="none" stroke="rgba(244,239,228,.12)" strokeWidth="4"/><circle id="dashArc" cx="35" cy="35" r="32" fill="none" stroke="var(--teal)" strokeWidth="4" strokeLinecap="round" strokeDasharray="201" strokeDashoffset="0" transform="rotate(-90 35 35)"/></svg>
             <button id="dashBtn" aria-label="Chair spin dash">SPIN</button>
@@ -73,6 +78,17 @@ export default function App() {
               <span className="best" id="bestLine"></span>
             </form>
             <ol className="board" id="boardTitle" aria-label="Top scores"></ol>
+            <div className="online" id="online">
+              <div className="online-head"><span className="label">Online now</span><span className="best" id="onlineCount"></span></div>
+              <div className="invite" id="inviteBox" hidden>
+                <span id="inviteText"></span>
+                <button type="button" className="btn small" id="acceptBtn">Accept</button>
+                <button type="button" className="btn ghost small" id="declineBtn">Decline</button>
+              </div>
+              <ul className="online-list" id="onlineList"></ul>
+              <p className="best" id="onlineMsg"></p>
+              <p className="keys">Duel: <kbd>Space</kbd> throw &nbsp;·&nbsp; <kbd>Shift</kbd> dash &nbsp;·&nbsp; first to 100% stress loses</p>
+            </div>
           </div>
         </article>
       </section>
@@ -111,6 +127,7 @@ export default function App() {
             <div className="actions">
               <button className="btn" id="againBtn">New workday</button>
               <button className="btn ghost" id="overtimeBtn" hidden>Do overtime</button>
+              <button className="btn ghost" id="rematchBtn" hidden>Rematch</button>
             </div>
             <p className="sig">Sent from my chair</p>
           </div>

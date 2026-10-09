@@ -154,3 +154,21 @@ kbd{font:700 11px var(--mono);color:var(--paper);background:rgba(255,255,255,.08
 .board li.me{outline:1px solid var(--amber);background:rgba(255,179,87,.1)}
 .board li.empty{grid-template-columns:1fr;color:var(--mute)}
 .board li.empty::before{content:none}
+
+.opp{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line)}
+.opp .label{color:var(--coral);text-transform:none;letter-spacing:.04em;font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#oppState{font:700 12px/1 var(--body);white-space:nowrap}
+#oppFill{position:absolute;inset:0 auto 0 0;width:0%;border-radius:6px;background:linear-gradient(90deg,var(--teal),var(--amber) 55%,var(--coral));background-size:260px 100%;transition:width .2s}
+.icon-btn.throw{width:auto;padding:0 14px;color:var(--amber);border-color:rgba(255,179,87,.5);letter-spacing:.06em}
+.ptag{position:absolute;left:0;top:0;white-space:nowrap;pointer-events:none;will-change:transform;font:700 11px/1 var(--mono);color:var(--paper);background:rgba(255,91,97,.85);padding:4px 8px;border-radius:999px;letter-spacing:.04em}
+.online{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line)}
+.online-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.online-list{margin:10px 0 0;padding:0;list-style:none;display:grid;gap:4px}
+.online-list li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 10px;border-radius:8px;background:rgba(255,255,255,.04);font:600 13px var(--body)}
+.online-list li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.online-list li.empty{color:var(--mute);font-weight:500}
+.btn.small{padding:8px 12px;font-size:12px;border-radius:9px;box-shadow:none}
+.btn:disabled{opacity:.45;cursor:default}
+.invite{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;padding:10px 12px;border-radius:10px;background:rgba(255,179,87,.1);border:1px solid rgba(255,179,87,.35);font:600 13px var(--body)}
+.invite span{flex:1 1 160px}
+.online .keys{margin-top:12px}
