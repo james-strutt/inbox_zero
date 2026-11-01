@@ -166,6 +166,12 @@ const unsubIcon = canvasTex('unsub', 200, 200, (g, w, h) => {
   g.fillRect(38, 100, 124, 12);
   g.fillStyle = '#ff8c90'; g.beginPath(); g.ellipse(84, 92, 22, 8, -.2, 0, 7); g.fill();
 });
+const markIcon = canvasTex('mark', 256, 256, (g, w, h) => {
+  g.fillStyle = '#161d4a'; rr(g, 0, 0, w, h, 36); g.fill();
+  g.strokeStyle = '#6f8dff'; g.lineWidth = 12; rr(g, 10, 10, w - 20, h - 20, 28); g.stroke();
+  g.fillStyle = '#dfe6ff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = '900 190px Unbounded, Arial Black, sans-serif'; g.fillText('M', w / 2, h / 2 + 10);
+});
 
 /* carpet + rug */
 const carpetTex = canvasTex(null, 256, 256, (g, w, h) => {
@@ -656,6 +662,7 @@ const Sfx = {
   hit() { this.tone(140, .3, 'sine', .45, 45); this.noise(.22, .35, 1800, .8, 500); this.tone(320, .12, 'triangle', .12, 160, .02); },
   dash() { this.noise(.28, .22, 500, 1.5, 3200); this.tone(300, .25, 'sine', .06, 900); },
   pickup() { [660, 880, 1320].forEach((f, i) => this.tone(f, .16, 'triangle', .14, null, i * .06)); },
+  launch() { this.tone(420, .22, 'sawtooth', .07, 1500); this.noise(.22, .16, 900, 2, 4200); },
   block() { this.tone(1600, .14, 'triangle', .1, 2400); },
   shout() { this.tone(520, .09, 'square', .05, 700); this.tone(700, .16, 'square', .05, 560, .1); },
   close() { this.noise(.16, .12, 2500, 3, 5000); },
@@ -752,6 +759,7 @@ addEventListener('keydown', e => {
   if (game.state === 'playing' && game.mode === 'duel') { if (k === ' ') throwAtOpponent(); if (k === 'shift') tryDash(); }
   else if ((k === ' ' || k === 'shift') && game.state === 'playing') tryDash();
   if ((k === 'p' || k === 'escape') && (game.state === 'playing' || game.state === 'paused')) togglePause();
+  if (k === 'e') launchMark();
   if (k === 'm') Sfx.setMuted(!Sfx.muted);
   if (k === 'enter' && game.state === 'title') clockIn();
 });
@@ -776,6 +784,7 @@ addEventListener('pointermove', e => {
 const endJoy = e => { if (joy.active && e.pointerId === joy.id) { joy.active = false; joy.x = joy.y = 0; $('joy').style.display = 'none'; } };
 addEventListener('pointerup', endJoy); addEventListener('pointercancel', endJoy);
 $('dashBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (game.state === 'playing') tryDash(); });
+$('markBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); launchMark(); });
 
 function inputVec(out) {
   out.set(0, 0, 0);
@@ -1031,10 +1040,12 @@ function updateShockwaves(dt) {
 }
 
 /* ---------- power-ups ---------- */
-const PU = ['coffee', 'ooo', 'unsub'];
+const PU = ['coffee', 'ooo', 'unsub', 'mark'];
+const PU_HALO = { coffee: 0xffb357, ooo: 0x52d6c4, unsub: 0xff5b61, mark: 0x6f8dff };
+const PU_FX = { coffee: C.amber, ooo: C.teal, unsub: C.red, mark: C.blue };
 function makePowerMesh(type) {
   const g = new THREE.Group();
-  const halo = new THREE.Mesh(new THREE.RingGeometry(.7, .95, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(type === 'coffee' ? 0xffb357 : type === 'ooo' ? 0x52d6c4 : 0xff5b61).multiplyScalar(1.8), transparent: true, opacity: .8, depthWrite: false, blending: THREE.AdditiveBlending }));
+  const halo = new THREE.Mesh(new THREE.RingGeometry(.7, .95, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(PU_HALO[type]).multiplyScalar(1.8), transparent: true, opacity: .8, depthWrite: false, blending: THREE.AdditiveBlending }));
   halo.rotation.x = -Math.PI / 2; halo.position.y = .05; g.add(halo);
   const body = new THREE.Group(); body.position.y = .9; g.add(body);
   if (type === 'coffee') {
@@ -1047,6 +1058,9 @@ function makePowerMesh(type) {
       new THREE.MeshStandardMaterial({ map: oooTex, emissive: 0xffffff, emissiveMap: oooTex, emissiveIntensity: 1.1 }),
       new THREE.MeshStandardMaterial({ map: oooTex, emissive: 0xffffff, emissiveMap: oooTex, emissiveIntensity: 1.1 })]);
     body.add(panel);
+  } else if (type === 'mark') {
+    const face = new THREE.MeshStandardMaterial({ map: markIcon, emissive: 0xffffff, emissiveMap: markIcon, emissiveIntensity: 1.1 });
+    body.add(mesh(new THREE.BoxGeometry(.95, .95, .08), [M.dark, M.dark, M.dark, M.dark, face, face]));
   } else {
     body.position.y = .25;
     body.add(mesh(new THREE.CylinderGeometry(.55, .62, .25, 32), M.dark));
@@ -1058,9 +1072,9 @@ function makePowerMesh(type) {
 function spawnPower() {
   let x, z, tries = 0;
   do { x = rand(-arena.W + 1.5, arena.W - 1.5); z = rand(-arena.D + 1.2, arena.D - 1.2); tries++; } while (Math.hypot(x - hero.pos.x, z - hero.pos.z) < 4 && tries < 20);
-  const weights = [game.stress > 40 ? 5 : 2.5, 2, game.projectiles.length > 8 ? 3 : 1.4];
+  const weights = [game.stress > 40 ? 5 : 2.5, 2, game.projectiles.length > 8 ? 3 : 1.4, marks.orbit.length ? .6 : 1.8];
   let r = Math.random() * weights.reduce((a, b) => a + b), type = 'coffee';
-  for (let i = 0; i < 3; i++) { r -= weights[i]; if (r <= 0) { type = PU[i]; break; } }
+  for (let i = 0; i < PU.length; i++) { r -= weights[i]; if (r <= 0) { type = PU[i]; break; } }
   spawnPowerAt(type, x, z);
 }
 function spawnPowerAt(type, x, z, id) {
@@ -1071,12 +1085,14 @@ function collectPower(p) {
   if (p.id) duelSend({ k: 'took', id: p.id });
   Sfx.pickup();
   const at = new THREE.Vector3(p.pos.x, 2.4, p.pos.z);
-  burst(V2.set(p.pos.x, 1, p.pos.z), p.type === 'coffee' ? C.amber : p.type === 'ooo' ? C.teal : C.red, 40, 7, .45, .8);
+  burst(V2.set(p.pos.x, 1, p.pos.z), PU_FX[p.type], 40, 7, .45, .8);
   if (p.type === 'coffee') {
     game.stress = Math.max(0, game.stress - 30); hero.coffee = 5;
     floatText(at, 'Coffee. Stress −30', 'good');
   } else if (p.type === 'ooo') {
     hero.shield = 7; floatText(at, 'Out of office (7s)', 'good');
+  } else if (p.type === 'mark') {
+    grantMarks(); floatText(at, isTouch ? 'Triple Mark. Tap MARK' : 'Triple Mark. Press E', 'good');
   } else {
     floatText(at, 'Unsubscribed from all', 'good');
     Sfx.boom(); camRig.shake = .6;
@@ -1098,7 +1114,7 @@ function updatePowerups(dt) {
     p.m.userData.halo.material.opacity = .5 + .3 * Math.sin(p.age * 5);
     p.m.visible = p.life > 2.2 || Math.sin(p.life * 22) > 0;
     if (p.type === 'coffee' && Math.random() < dt * 14) dust.spawn(V2.set(p.pos.x + rand(-.1, .1), b.position.y + .35, p.pos.z), V.set(rand(-.2, .2), 1.1, rand(-.2, .2)), C.steam, .25, .7, 1.1, -.3, .5);
-    if (Math.random() < dt * 6) glow.spawn(V2.set(p.pos.x + rand(-.8, .8), .1, p.pos.z + rand(-.8, .8)), V.set(0, rand(1, 2), 0), p.type === 'coffee' ? C.amber : p.type === 'ooo' ? C.teal : C.red, .25, 0, .9, 0, .5);
+    if (Math.random() < dt * 6) glow.spawn(V2.set(p.pos.x + rand(-.8, .8), .1, p.pos.z + rand(-.8, .8)), V.set(0, rand(1, 2), 0), PU_FX[p.type], .25, 0, .9, 0, .5);
     if (game.state === 'playing' && Math.hypot(p.pos.x - hero.pos.x, p.pos.z - hero.pos.z) < 1.35) {
       collectPower(p); scene.remove(p.m); game.powerups.splice(i, 1); continue;
     }
@@ -1161,6 +1177,83 @@ function updateAlbino(dt) {
   if (Math.random() < dt * 14) glow.spawn(V2.set(p.x + rand(-.9, .9), rand(.3, 2), p.z + rand(-.5, .5)), V.set(0, rand(1, 2), 0), C.yellow, .3, 0, .8, 0, .5);
   if (game.state === 'playing' && Math.hypot(dx, dz) < 1.5) { catchAlbino(); return; }
   if (albino.life <= 0) { floatText(new THREE.Vector3(p.x, 2.6, p.z), 'It got away', 'pts'); hideAlbino(); }
+}
+
+/* ---------- triple mark ---------- */
+const MARK_COUNT = 3, MARK_ORBIT = 2.3, MARK_SPIN = 4.2, MARK_SPEED = 15, MARK_LIFE = .9, MARK_BLAST = 4.5;
+const marks = { tex: null, w: 1, h: 1, angle: 0, orbit: [], flying: [] };
+async function loadMark() {
+  const img = new Image(); img.src = `${import.meta.env.BASE_URL}mark.png`; await img.decode();
+  marks.h = hero.H / 3; marks.w = marks.h * img.width / img.height;
+  marks.tex = canvasTex(null, 256, 320, (g, w, h) => {
+    const s = Math.min(w / img.width, h / img.height);
+    g.drawImage(img, (w - img.width * s) / 2, (h - img.height * s) / 2, img.width * s, img.height * s);
+  });
+}
+function makeMarkSprite() {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: marks.tex, alphaTest: .5 }));
+  s.scale.set(marks.w, marks.h, 1); s.position.copy(hero.pos); scene.add(s);
+  return s;
+}
+function disposeMark(s) { scene.remove(s); s.material.dispose(); }
+function grantMarks() {
+  while (marks.orbit.length < MARK_COUNT) marks.orbit.push(makeMarkSprite());
+  updateBuffs();
+}
+function clearMarks() {
+  for (const s of marks.orbit) disposeMark(s);
+  for (const f of marks.flying) disposeMark(f.s);
+  marks.orbit.length = 0; marks.flying.length = 0;
+}
+function launchMark() {
+  if (game.state !== 'playing' || !marks.orbit.length) return;
+  inputVec(inp);
+  if (inp.lengthSq() < .01) inp.set(hero.facing, 0, 0);
+  const dir = inp.clone().normalize();
+  const s = marks.orbit.pop();
+  const pos = hero.pos.clone().addScaledVector(dir, 1.2); pos.y = s.position.y;
+  marks.flying.push({ s, pos, vel: dir.multiplyScalar(MARK_SPEED), age: 0 });
+  if (Math.abs(dir.x) > .2) hero.facing = Math.sign(dir.x);
+  Sfx.launch();
+  updateBuffs();
+}
+function markTouchesThreat(at) {
+  return game.projectiles.some(p => !p.harmless && Math.hypot(p.pos.x - at.x, p.pos.z - at.z) < p.def.r + .6)
+    || game.calls.some(c => Math.hypot(c.pos.x - at.x, c.pos.z - at.z) < c.R);
+}
+function detonateMark(at) {
+  Sfx.boom(); camRig.shake = Math.max(camRig.shake, .55);
+  shockwave(at, MARK_BLAST, 0x6f8dff, .6);
+  burst(V2.set(at.x, 1, at.z), C.blue, 60, 10, .5, .7);
+  paperBurst(new THREE.Vector3(at.x, 1.2, at.z), 18);
+  let n = 0;
+  game.projectiles = game.projectiles.filter(p => {
+    if (p.harmless || Math.hypot(p.pos.x - at.x, p.pos.z - at.z) > MARK_BLAST + p.def.r) return true;
+    destroyProjectile(p, true); n++;
+    return false;
+  });
+  for (let i = game.calls.length - 1; i >= 0; i--) {
+    const c = game.calls[i];
+    if (Math.hypot(c.pos.x - at.x, c.pos.z - at.z) < MARK_BLAST + c.R) { scene.remove(c.g); game.calls.splice(i, 1); n++; }
+  }
+  if (n) addScore(n * 25, new THREE.Vector3(at.x, 3, at.z));
+}
+function updateMarks(dt) {
+  marks.angle += dt * MARK_SPIN;
+  marks.orbit.forEach((s, i) => {
+    const a = marks.angle + i * Math.PI * 2 / MARK_COUNT;
+    s.position.set(hero.pos.x + Math.cos(a) * MARK_ORBIT, 1.1 + Math.sin(marks.angle * 1.5 + i * 2) * .12, hero.pos.z + Math.sin(a) * MARK_ORBIT);
+  });
+  const { W, D } = arena;
+  for (let i = marks.flying.length - 1; i >= 0; i--) {
+    const f = marks.flying[i]; f.age += dt;
+    f.pos.addScaledVector(f.vel, dt);
+    f.s.position.copy(f.pos);
+    f.s.material.rotation += dt * 16;
+    if (Math.random() < dt * 40) glow.spawn(V2.copy(f.pos), V.set(rand(-.3, .3), rand(.2, .8), rand(-.3, .3)), C.blue, .45, 0, .4, 0, 1);
+    const out = Math.abs(f.pos.x) > W + 1 || Math.abs(f.pos.z) > D + 1;
+    if (out || f.age > MARK_LIFE || markTouchesThreat(f.pos)) { detonateMark(f.pos); disposeMark(f.s); marks.flying.splice(i, 1); }
+  }
 }
 
 /* ---------- scoring / damage ---------- */
@@ -1355,7 +1448,7 @@ function updateHUD() {
   setText('combo', 'x' + game.combo);
   setText('dodged', String(game.dodged));
   setText('hits', String(game.hits));
-  const bk = (hero.coffee > 0) + '|' + (hero.shield > 0) + '|' + (hero.gold > 0);
+  const bk = (hero.coffee > 0) + '|' + (hero.shield > 0) + '|' + (hero.gold > 0) + '|' + marks.orbit.length;
   if (hudCache.buffs !== bk) { hudCache.buffs = bk; updateBuffs(); }
   const arc = $('dashArc'); arc.style.strokeDashoffset = String(201 * (hero.dashCd / 1.25));
   arc.style.stroke = hero.dashCd > 0 ? 'rgba(244,239,228,.4)' : 'var(--teal)';
@@ -1365,6 +1458,9 @@ function updateBuffs() {
   if (hero.coffee > 0) { const s = document.createElement('span'); s.className = 'buff coffee'; s.textContent = 'CAFFEINATED'; b.appendChild(s); }
   if (hero.gold > 0) { const s = document.createElement('span'); s.className = 'buff gold'; s.textContent = 'OVERSHIELD'; b.appendChild(s); }
   else if (hero.shield > 0) { const s = document.createElement('span'); s.className = 'buff ooo'; s.textContent = 'OOO'; b.appendChild(s); }
+  const n = marks.orbit.length;
+  if (n) { const s = document.createElement('span'); s.className = 'buff mark'; s.textContent = `MARK ×${n}`; b.appendChild(s); }
+  $('markBtn').hidden = !n; $('markBtn').textContent = `MARK ×${n}`;
 }
 let bannerTimer = 0;
 function banner(t, s, dur = 2.6) {
@@ -1379,6 +1475,7 @@ function resetWorld() {
   for (const p of game.powerups) scene.remove(p.m);
   clearCalls();
   hideAlbino();
+  clearMarks();
   for (const e of game.events) e.cleanup && e.cleanup();
   game.events.length = 0; game.projectiles.length = 0; game.powerups.length = 0;
   clearFloaters(); glow.clear(); dust.clear();
@@ -1506,6 +1603,7 @@ function tick() {
     updateProjectiles(dt);
     updatePowerups(dt);
     updateAlbino(dt);
+    updateMarks(dt);
     updateOpponent(dt);
     updateShockwaves(dt);
     updateConfetti(dt);
@@ -1793,7 +1891,7 @@ function buildLegend() {
   const items = [
     ['email', 'Email', 'Straight line'], ['sticky', 'Sticky note', 'Small, fast'], ['urgent', 'URGENT!!', 'Chases you'],
     ['invite', 'Meeting invite', 'Big and slow'], ['call', 'Incoming call', 'Leave the red ring'],
-    ['coffee', 'Coffee', 'Stress down, speed up', 1], ['ooo', 'Out of office', 'Shield for 7s', 1], ['unsub', 'Unsubscribe', 'Clears the screen', 1], ['albino', 'Golden albino', 'Catch it: 10s overshield', 1],
+    ['coffee', 'Coffee', 'Stress down, speed up', 1], ['ooo', 'Out of office', 'Shield for 7s', 1], ['unsub', 'Unsubscribe', 'Clears the screen', 1], ['mark', 'Triple Mark', isTouch ? 'Tap MARK to launch one' : 'E launches one. Blast radius', 1], ['albino', 'Golden albino', 'Catch it: 10s overshield', 1],
   ];
   const L = $('legend');
   for (const [k, n, s, good] of items) {
@@ -1809,6 +1907,7 @@ function buildLegend() {
 async function boot() {
   await loadHero();
   await loadAlbino();
+  await loadMark();
   buildOpponent();
   const [W, D] = arenaForAspect();
   buildOffice(W, D);

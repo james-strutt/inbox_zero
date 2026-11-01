@@ -51,7 +51,7 @@ body{margin:0;background:var(--ink);color:var(--paper);font-family:var(--body);o
 .tally b{display:block;font:700 18px/1.1 var(--mono);font-variant-numeric:tabular-nums;margin-top:4px}
 .buffs{display:flex;gap:8px;align-items:center}
 .buff{font:700 11px/1 var(--mono);padding:7px 9px;border-radius:8px;border:1px solid currentColor;background:var(--panel)}
-.buff.coffee{color:var(--amber)} .buff.ooo{color:var(--teal)}
+.buff.coffee{color:var(--amber)} .buff.ooo{color:var(--teal)} .buff.mark{color:#8aa2ff}
 .btns{display:flex;gap:8px;pointer-events:auto}
 .icon-btn{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--paper);display:grid;place-items:center;cursor:pointer;font:700 12px var(--mono)}
 .icon-btn:focus-visible,.btn:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
@@ -160,6 +160,7 @@ kbd{font:700 11px var(--mono);color:var(--paper);background:rgba(255,255,255,.08
 #oppState{font:700 12px/1 var(--body);white-space:nowrap}
 #oppFill{position:absolute;inset:0 auto 0 0;width:0%;border-radius:6px;background:linear-gradient(90deg,var(--teal),var(--amber) 55%,var(--coral));background-size:260px 100%;transition:width .2s}
 .icon-btn.throw{width:auto;padding:0 14px;color:var(--amber);border-color:rgba(255,179,87,.5);letter-spacing:.06em}
+.icon-btn.throw.mark{color:#8aa2ff;border-color:rgba(111,141,255,.55)}
 .ptag{position:absolute;left:0;top:0;white-space:nowrap;pointer-events:none;will-change:transform;font:700 11px/1 var(--mono);color:var(--paper);background:rgba(255,91,97,.85);padding:4px 8px;border-radius:999px;letter-spacing:.04em}
 .online{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line)}
 .online-head{display:flex;justify-content:space-between;align-items:center;gap:10px}

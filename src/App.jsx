@@ -49,6 +49,7 @@ export default function App() {
             <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
           </button>
           <button className="icon-btn throw" id="throwBtn" hidden aria-label="Throw at opponent" title="Throw (Space)">THROW</button>
+          <button className="icon-btn throw mark" id="markBtn" hidden aria-label="Launch a Mark" title="Launch Mark (E)">MARK</button>
           <div id="dashWrap">
             <svg id="dashRing" viewBox="0 0 70 70"><circle cx="35" cy="35" r="32" fill="none" stroke="rgba(244,239,228,.12)" strokeWidth="4"/><circle id="dashArc" cx="35" cy="35" r="32" fill="none" stroke="var(--teal)" strokeWidth="4" strokeLinecap="round" strokeDasharray="201" strokeDashoffset="0" transform="rotate(-90 35 35)"/></svg>
             <button id="dashBtn" aria-label="Chair spin dash">SPIN</button>
@@ -70,7 +71,7 @@ export default function App() {
             <h1>Inbox <em>Zero</em></h1>
             <p className="lede">It's 9:00 on a Wednesday. Roll your chair around the floor and dodge every email, meeting invite and "quick question" until 5:00 PM. Get hit too often and your stress maxes out. Anything from The Boss is aimed at you.</p>
             <div className="legend" id="legend"></div>
-            <p className="keys desk-only"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows to roll &nbsp;·&nbsp; <kbd>Space</kbd> chair-spin dash (brief immunity) &nbsp;·&nbsp; <kbd>P</kbd> pause</p>
+            <p className="keys desk-only"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows to roll &nbsp;·&nbsp; <kbd>Space</kbd> chair-spin dash (brief immunity) &nbsp;·&nbsp; <kbd>E</kbd> launch Mark &nbsp;·&nbsp; <kbd>P</kbd> pause</p>
             <p className="keys touch-only" id="touchKeys" hidden>Drag anywhere to roll. Tap SPIN to dash through trouble.</p>
             <form className="actions" id="startForm">
               <input id="nameInput" maxLength={16} required autoComplete="nickname" placeholder="Your name" aria-label="Your name for the leaderboard" />
